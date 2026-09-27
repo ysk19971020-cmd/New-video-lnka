@@ -29,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="si" suppressHydrationWarning>
       <meta name="clckd" content="d753b2a324b61bb5a5ec855f17394f21" />
+      <meta name="5abc9147bb0528ff785b21690153c8df5753304a" content="5abc9147bb0528ff785b21690153c8df5753304a" />
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#f7fbff] text-[#0b1220]`}
       >
