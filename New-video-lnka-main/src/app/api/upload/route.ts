@@ -1,80 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/firebase-admin';
 
 const ALLOWED_VIDEO = ['video/mp4','video/webm','video/ogg','video/quicktime','video/x-msvideo'];
 const ALLOWED_IMAGE = ['image/jpeg','image/png','image/gif','image/webp'];
 const ALLOWED_TYPES = [...ALLOWED_VIDEO, ...ALLOWED_IMAGE];
-const MAX_VIDEO = 500 * 1024 * 1024; // 500 MB
-const MAX_IMAGE =  10 * 1024 * 1024; // 10 MB
+const MAX_VIDEO = 500 * 1024 * 1024;
+const MAX_IMAGE =  10 * 1024 * 1024;
 
-export async function POST(request: NextRequest) {
-  // 🔐 Firebase auth check
-  const user = await verifyAuthToken(request.headers.get('Authorization'));
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized — please sign in.' }, { status: 401 });
-  }
-
-  // ── Check Blob token ───────────────────────────────────────────────────────
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return NextResponse.json(
-      { error: 'Storage not configured. Add BLOB_READ_WRITE_TOKEN to Vercel environment variables.' },
-      { status: 503 }
-    );
-  }
-
-  let formData: FormData;
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    formData = await request.formData();
-  } catch {
-    return NextResponse.json({ error: 'Invalid form data.' }, { status: 400 });
-  }
+    // Auth check
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized — please sign in.' }, { status: 401 });
+    }
 
-  const file  = formData.get('file')  as File | null;
-  const title = formData.get('title') as string | null;
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json(
+        { error: 'Storage not configured. Set BLOB_READ_WRITE_TOKEN in Vercel Environment Variables.' },
+        { status: 503 }
+      );
+    }
 
-  if (!file) {
-    return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
-  }
+    let formData: FormData;
+    try { formData = await request.formData(); }
+    catch { return NextResponse.json({ error: 'Invalid form data.' }, { status: 400 }); }
 
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return NextResponse.json(
-      { error: `File type "${file.type}" is not allowed. Only video and image files are accepted.` },
-      { status: 400 }
-    );
-  }
+    const file  = formData.get('file')  as File | null;
+    const title = formData.get('title') as string | null;
 
-  const isVideo = ALLOWED_VIDEO.includes(file.type);
-  const limit   = isVideo ? MAX_VIDEO : MAX_IMAGE;
-  if (file.size > limit) {
-    const mb = (limit / (1024 * 1024)).toFixed(0);
-    return NextResponse.json(
-      { error: `File too large. Max ${mb} MB for ${isVideo ? 'video' : 'image'}.` },
-      { status: 400 }
-    );
-  }
+    if (!file) return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
 
-  try {
-    // Dynamic import so missing token gives a clear error, not a crash
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: `File type "${file.type}" not allowed.` }, { status: 400 });
+    }
+
+    const isVideo = ALLOWED_VIDEO.includes(file.type);
+    const limit   = isVideo ? MAX_VIDEO : MAX_IMAGE;
+    if (file.size > limit) {
+      return NextResponse.json(
+        { error: `File too large. Max ${(limit/(1024*1024)).toFixed(0)} MB.` },
+        { status: 400 }
+      );
+    }
+
     const { put } = await import('@vercel/blob');
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
-    const pathname = `videolanka/${user.uid}/${Date.now()}-${safeName}`;
+    const pathname = `videolanka/${Date.now()}-${safeName}`;
 
+    // ✅ Private blob (matches private store)
     const blob = await put(pathname, file, {
-      access:          'public',
+      access:          'private',
       contentType:     file.type,
       addRandomSuffix: true,
     });
 
+    // Store serve URL (never expires) instead of signed private URL
+    const baseUrl  = process.env.NEXT_PUBLIC_BASE_URL || '';
+    const serveUrl = `${baseUrl}/api/serve?pathname=${encodeURIComponent(blob.pathname)}`;
+
     return NextResponse.json({
-      url:         blob.url,
+      url:         serveUrl,   // ← used as video src everywhere
       pathname:    blob.pathname,
       contentType: file.type,
       size:        file.size,
       title:       title ?? file.name,
     });
+
   } catch (error: unknown) {
     console.error('[UPLOAD POST]', error);
-    const msg = error instanceof Error ? error.message : 'Upload failed';
+    const msg = error instanceof Error ? error.message : 'Upload failed. Please try again.';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
