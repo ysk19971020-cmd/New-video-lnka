@@ -54,7 +54,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       addRandomSuffix: true,
     });
 
-    // Build serve URL — uses relative path, works on any domain
     const serveUrl = `/api/serve?pathname=${encodeURIComponent(blob.pathname)}`;
 
     return NextResponse.json({
