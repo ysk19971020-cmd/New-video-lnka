@@ -54,12 +54,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       addRandomSuffix: true,
     });
 
-    // Store serve URL (never expires) instead of signed private URL
-    const baseUrl  = process.env.NEXT_PUBLIC_BASE_URL || '';
-    const serveUrl = `${baseUrl}/api/serve?pathname=${encodeURIComponent(blob.pathname)}`;
+    // Build serve URL — uses relative path, works on any domain
+    const serveUrl = `/api/serve?pathname=${encodeURIComponent(blob.pathname)}`;
 
     return NextResponse.json({
-      url:         serveUrl,   // ← used as video src everywhere
+      url:         serveUrl,
       pathname:    blob.pathname,
       contentType: file.type,
       size:        file.size,
