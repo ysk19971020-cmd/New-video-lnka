@@ -42,13 +42,17 @@ function isAllowedVastUrl(raw: string): boolean {
 
 // ─── GET: fetch current VAST URL (public) ────────────────────────────────────
 
+const DEFAULT_VAST_URL = process.env.VAST_URL ?? '';
+
 export async function GET() {
   try {
     const setting = await db.setting.findUnique({ where: { key: 'vastUrl' } });
-    return NextResponse.json({ vastUrl: setting?.value ?? '' });
+    // Use DB value if set, otherwise fall back to env var
+    return NextResponse.json({ vastUrl: setting?.value || DEFAULT_VAST_URL });
   } catch (error) {
     console.error('[VAST GET]', error);
-    return NextResponse.json({ error: 'Failed to fetch VAST URL', vastUrl: '' }, { status: 500 });
+    // On DB error, still return the env-var default so ads keep running
+    return NextResponse.json({ vastUrl: DEFAULT_VAST_URL });
   }
 }
 
